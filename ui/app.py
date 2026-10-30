@@ -1,10 +1,23 @@
 import os
+import sys
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 import io
 import json
 
-from ui.client import ApiClient, ApiError
+# Ensure project root and ui directory are in sys.path for Streamlit Cloud
+_current_dir = Path(__file__).resolve().parent
+_project_root = _current_dir.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+if str(_current_dir) not in sys.path:
+    sys.path.insert(0, str(_current_dir))
+
+try:
+    from ui.client import ApiClient, ApiError
+except ModuleNotFoundError:
+    from client import ApiClient, ApiError
 
 # Streamlit Page Configuration
 st.set_page_config(
