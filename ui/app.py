@@ -1,5 +1,8 @@
 import os
 import sys
+import socket
+import subprocess
+import time
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -19,6 +22,48 @@ try:
 except ModuleNotFoundError:
     from client import ApiClient, ApiError
 
+
+def _is_backend_online(host: str = "127.0.0.1", port: int = 8000) -> bool:
+    """Check if the backend port is currently accepting connections."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            return s.connect_ex((host, port)) == 0
+    except Exception:
+        return False
+
+
+def _start_backend_process(host: str = "127.0.0.1", port: int = 8000):
+    """Start FastAPI backend as a background process if not already running."""
+    if _is_backend_online(host, port):
+        return
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "api.main:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    try:
+        subprocess.Popen(
+            cmd,
+            cwd=str(_project_root),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        # Wait up to 5 seconds for FastAPI to be fully up and listening
+        for _ in range(10):
+            time.sleep(0.5)
+            if _is_backend_online(host, port):
+                break
+    except Exception:
+        pass
+
+
 # Streamlit Page Configuration
 st.set_page_config(
     page_title="Synthetic / Dirty Dataset Generator",
@@ -28,6 +73,21 @@ st.set_page_config(
 
 # Backend URL configuration
 DEFAULT_API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+
+# Auto-start FastAPI backend when running locally or on Streamlit Cloud with localhost
+if "127.0.0.1" in DEFAULT_API_URL or "localhost" in DEFAULT_API_URL:
+    target_port = 8000
+    try:
+        parts = DEFAULT_API_URL.split("//")[-1].split(":")
+        if len(parts) > 1:
+            port_cand = parts[1].split("/")[0]
+            if port_cand.isdigit():
+                target_port = int(port_cand)
+    except Exception:
+        target_port = 8000
+
+    if not _is_backend_online("127.0.0.1", target_port):
+        _start_backend_process("127.0.0.1", target_port)
 
 # Initialize API client in session state
 if "api_client" not in st.session_state:
